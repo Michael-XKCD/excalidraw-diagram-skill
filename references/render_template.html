@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh; img-src data: blob:; font-src data: https://esm.sh; worker-src blob:;" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #ffffff; overflow: hidden; }
@@ -13,7 +14,7 @@
   <div id="root"></div>
 
   <script type="module">
-    import { exportToSvg } from "https://esm.sh/@excalidraw/excalidraw?bundle";
+    import { exportToSvg } from "https://esm.sh/@excalidraw/excalidraw@0.18.0?bundle&target=es2022";
 
     window.renderDiagram = async function(jsonData) {
       try {
@@ -35,10 +36,59 @@
           files: files,
         });
 
-        // Clear any previous render
+        // Excalidraw computes the SVG viewBox from stored element dimensions,
+        // but text can render beyond those stored bounds. Temporarily allow
+        // overflow, measure the actual rendered content, and expand the viewBox.
+        svg.setAttribute("overflow", "visible");
+
         const root = document.getElementById("root");
         root.innerHTML = "";
         root.appendChild(svg);
+
+        await document.fonts.ready;
+
+        const ctm = svg.getScreenCTM();
+        const vbAttr = svg.getAttribute("viewBox");
+        if (ctm && vbAttr) {
+          const [origVx, origVy, origVw, origVh] = vbAttr.split(" ").map(Number);
+          const invCTM = ctm.inverse();
+
+          let pxMinX = Infinity;
+          let pxMinY = Infinity;
+          let pxMaxX = -Infinity;
+          let pxMaxY = -Infinity;
+
+          for (const el of svg.querySelectorAll("*")) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) {
+              continue;
+            }
+            pxMinX = Math.min(pxMinX, rect.left);
+            pxMinY = Math.min(pxMinY, rect.top);
+            pxMaxX = Math.max(pxMaxX, rect.right);
+            pxMaxY = Math.max(pxMaxY, rect.bottom);
+          }
+
+          if (pxMinX !== Infinity) {
+            const svgMin = new DOMPoint(pxMinX, pxMinY).matrixTransform(invCTM);
+            const svgMax = new DOMPoint(pxMaxX, pxMaxY).matrixTransform(invCTM);
+            const pad = 40;
+            const newVx = Math.min(origVx, svgMin.x) - pad;
+            const newVy = Math.min(origVy, svgMin.y) - pad;
+            const newMaxX = Math.max(origVx + origVw, svgMax.x) + pad;
+            const newMaxY = Math.max(origVy + origVh, svgMax.y) + pad;
+            const newVw = newMaxX - newVx;
+            const newVh = newMaxY - newVy;
+            const origW = parseFloat(svg.getAttribute("width"));
+            const pxPerUnit = origW / origVw;
+
+            svg.setAttribute("viewBox", `${newVx} ${newVy} ${newVw} ${newVh}`);
+            svg.setAttribute("width", String(newVw * pxPerUnit));
+            svg.setAttribute("height", String(newVh * pxPerUnit));
+          }
+        }
+
+        svg.removeAttribute("overflow");
 
         window.__renderComplete = true;
         window.__renderError = null;

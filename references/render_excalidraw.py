@@ -1,11 +1,11 @@
 """Render Excalidraw JSON to PNG using Playwright + headless Chromium.
 
 Usage:
-    cd .claude/skills/excalidraw-diagram/references
+    cd ~/.agents/skills/excalidraw-diagram/references
     uv run python render_excalidraw.py <path-to-file.excalidraw> [--output path.png] [--scale 2] [--width 1920]
 
 First-time setup:
-    cd .claude/skills/excalidraw-diagram/references
+    cd ~/.agents/skills/excalidraw-diagram/references
     uv sync
     uv run playwright install chromium
 """
@@ -16,6 +16,20 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+
+MAX_INPUT_BYTES = 5 * 1024 * 1024
+MAX_ELEMENTS = 5000
+MAX_LINEAR_POINTS = 2000
+MAX_ABSOLUTE_COORDINATE = 250_000
+MAX_ELEMENT_DIMENSION = 100_000
+MAX_RENDERED_DIMENSION = 20_000
+MODULE_READY_TIMEOUT_MS = 30_000
+RENDER_TIMEOUT_MS = 15_000
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def validate_excalidraw(data: dict) -> list[str]:
@@ -31,6 +45,69 @@ def validate_excalidraw(data: dict) -> list[str]:
         errors.append("'elements' must be an array")
     elif len(data["elements"]) == 0:
         errors.append("'elements' array is empty — nothing to render")
+    elif len(data["elements"]) > MAX_ELEMENTS:
+        errors.append(
+            f"'elements' array exceeds safe limit ({len(data['elements'])} > {MAX_ELEMENTS})"
+        )
+
+    files = data.get("files", {})
+    if files is not None and not isinstance(files, dict):
+        errors.append("'files' must be an object when present")
+
+    app_state = data.get("appState", {})
+    if app_state is not None and not isinstance(app_state, dict):
+        errors.append("'appState' must be an object when present")
+
+    for index, element in enumerate(data.get("elements", [])):
+        if not isinstance(element, dict):
+            errors.append(f"Element {index} must be an object")
+            continue
+
+        element_id = element.get("id", f"index {index}")
+        element_type = element.get("type")
+        if not isinstance(element_type, str) or not element_type:
+            errors.append(f"Element {element_id} is missing a valid 'type'")
+
+        for field in ("x", "y", "width", "height"):
+            value = element.get(field, 0)
+            if not _is_number(value):
+                errors.append(f"Element {element_id} has non-numeric '{field}'")
+                continue
+            if abs(float(value)) > MAX_ABSOLUTE_COORDINATE:
+                errors.append(f"Element {element_id} has '{field}' outside safe bounds")
+            if (
+                field in {"width", "height"}
+                and abs(float(value)) > MAX_ELEMENT_DIMENSION
+            ):
+                errors.append(
+                    f"Element {element_id} has '{field}' larger than safe limit"
+                )
+
+        if element_type in {"arrow", "line"}:
+            points = element.get("points")
+            if not isinstance(points, list) or len(points) < 2:
+                errors.append(f"Element {element_id} must define at least 2 points")
+                continue
+            if len(points) > MAX_LINEAR_POINTS:
+                errors.append(
+                    f"Element {element_id} exceeds safe point count ({len(points)} > {MAX_LINEAR_POINTS})"
+                )
+                continue
+            for point_index, point in enumerate(points):
+                if not isinstance(point, list) or len(point) != 2:
+                    errors.append(
+                        f"Element {element_id} point {point_index} must be a 2-item array"
+                    )
+                    continue
+                if not all(_is_number(coord) for coord in point):
+                    errors.append(
+                        f"Element {element_id} point {point_index} must contain numbers"
+                    )
+                    continue
+                if max(abs(float(coord)) for coord in point) > MAX_ABSOLUTE_COORDINATE:
+                    errors.append(
+                        f"Element {element_id} point {point_index} is outside safe bounds"
+                    )
 
     return errors
 
@@ -81,11 +158,22 @@ def render(
         from playwright.sync_api import sync_playwright
     except ImportError:
         print("ERROR: playwright not installed.", file=sys.stderr)
-        print("Run: cd .claude/skills/excalidraw-diagram/references && uv sync && uv run playwright install chromium", file=sys.stderr)
+        print(
+            "Run: cd ~/.agents/skills/excalidraw-diagram/references && uv sync && uv run playwright install chromium",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Read and validate
-    raw = excalidraw_path.read_text(encoding="utf-8")
+    raw_bytes = excalidraw_path.read_bytes()
+    if len(raw_bytes) > MAX_INPUT_BYTES:
+        print(
+            f"ERROR: Input file is too large ({len(raw_bytes)} bytes > {MAX_INPUT_BYTES} bytes safe limit).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    raw = raw_bytes.decode("utf-8")
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -105,6 +193,13 @@ def render(
     padding = 80
     diagram_w = max_x - min_x + padding * 2
     diagram_h = max_y - min_y + padding * 2
+    if diagram_w > MAX_RENDERED_DIMENSION or diagram_h > MAX_RENDERED_DIMENSION:
+        print(
+            "ERROR: Diagram exceeds safe render bounds "
+            f"({int(diagram_w)}x{int(diagram_h)} > {MAX_RENDERED_DIMENSION}px limit).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Cap viewport width, let height be natural
     vp_width = min(int(diagram_w), max_width)
@@ -128,7 +223,10 @@ def render(
         except Exception as e:
             if "Executable doesn't exist" in str(e) or "browserType.launch" in str(e):
                 print("ERROR: Chromium not installed for Playwright.", file=sys.stderr)
-                print("Run: cd .claude/skills/excalidraw-diagram/references && uv run playwright install chromium", file=sys.stderr)
+                print(
+                    "Run: cd ~/.agents/skills/excalidraw-diagram/references && uv run playwright install chromium",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             raise
 
@@ -136,25 +234,33 @@ def render(
             viewport={"width": vp_width, "height": vp_height},
             device_scale_factor=scale,
         )
+        page.set_default_timeout(RENDER_TIMEOUT_MS)
 
         # Load the template
         page.goto(template_url)
 
-        # Wait for the ES module to load (imports from esm.sh)
-        page.wait_for_function("window.__moduleReady === true", timeout=30000)
+        # Wait for the ES module to load.
+        page.wait_for_function(
+            "window.__moduleReady === true", timeout=MODULE_READY_TIMEOUT_MS
+        )
 
         # Inject the diagram data and render
-        json_str = json.dumps(data)
-        result = page.evaluate(f"window.renderDiagram({json_str})")
+        result = page.evaluate("data => window.renderDiagram(data)", data)
 
         if not result or not result.get("success"):
-            error_msg = result.get("error", "Unknown render error") if result else "renderDiagram returned null"
+            error_msg = (
+                result.get("error", "Unknown render error")
+                if result
+                else "renderDiagram returned null"
+            )
             print(f"ERROR: Render failed: {error_msg}", file=sys.stderr)
             browser.close()
             sys.exit(1)
 
         # Wait for render completion signal
-        page.wait_for_function("window.__renderComplete === true", timeout=15000)
+        page.wait_for_function(
+            "window.__renderComplete === true", timeout=RENDER_TIMEOUT_MS
+        )
 
         # Screenshot the SVG element
         svg_el = page.query_selector("#root svg")
@@ -162,6 +268,22 @@ def render(
             print("ERROR: No SVG element found after render.", file=sys.stderr)
             browser.close()
             sys.exit(1)
+
+        # Resize viewport to fit the actual rendered SVG dimensions after
+        # viewBox expansion in the template. This prevents screenshot clipping.
+        svg_box = svg_el.bounding_box()
+        if svg_box:
+            fit_w = max(1, int(svg_box["width"]))
+            fit_h = max(1, int(svg_box["height"]))
+            if fit_w > MAX_RENDERED_DIMENSION or fit_h > MAX_RENDERED_DIMENSION:
+                print(
+                    "ERROR: Rendered SVG exceeds safe screenshot bounds "
+                    f"({fit_w}x{fit_h} > {MAX_RENDERED_DIMENSION}px limit).",
+                    file=sys.stderr,
+                )
+                browser.close()
+                sys.exit(1)
+            page.set_viewport_size({"width": fit_w, "height": fit_h})
 
         svg_el.screenshot(path=str(output_path))
         browser.close()
@@ -172,9 +294,23 @@ def render(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render Excalidraw JSON to PNG")
     parser.add_argument("input", type=Path, help="Path to .excalidraw JSON file")
-    parser.add_argument("--output", "-o", type=Path, default=None, help="Output PNG path (default: same name with .png)")
-    parser.add_argument("--scale", "-s", type=int, default=2, help="Device scale factor (default: 2)")
-    parser.add_argument("--width", "-w", type=int, default=1920, help="Max viewport width (default: 1920)")
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        help="Output PNG path (default: same name with .png)",
+    )
+    parser.add_argument(
+        "--scale", "-s", type=int, default=2, help="Device scale factor (default: 2)"
+    )
+    parser.add_argument(
+        "--width",
+        "-w",
+        type=int,
+        default=1920,
+        help="Max viewport width (default: 1920)",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
