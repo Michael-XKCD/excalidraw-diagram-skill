@@ -39,7 +39,15 @@ uv sync
 uv run playwright install chromium
 ```
 
-This hardened variant pins the Python dependency version and the Excalidraw browser import to reduce dependency drift. Rendering still depends on a version-pinned `esm.sh` browser module at runtime.
+This hardened variant pins the Python dependency version and vendors a locally built Excalidraw export bundle under `references/vendor/excalidraw/`, so rendering no longer depends on `esm.sh` at runtime.
+
+If you ever need to rebuild the vendored browser bundle after changing the pinned JS dependencies:
+
+```bash
+cd ~/.agents/skills/excalidraw-diagram/references
+npm install
+npm run build:bundle
+```
 
 ## Usage
 
@@ -48,6 +56,26 @@ Ask your coding agent to create a diagram:
 > "Create an Excalidraw diagram showing how the AG-UI protocol streams events from an AI agent to a frontend UI"
 
 The skill handles the rest — concept mapping, layout, JSON generation, rendering, and visual validation.
+
+## Live Baseline Suite
+
+This repo now includes a live end-to-end baseline harness under `tests/`.
+
+It uses `OpenCode` to generate diagrams with the local skill, re-renders the final `.excalidraw` artifact with the local renderer, and then asks `OpenCode` to review the rendered PNG. The output is meant for human ranking and taste calibration before hardening work such as removing the `esm.sh` dependency.
+
+Run the anchor scenario:
+
+```bash
+python3 tests/live_baseline.py --scenario ai-streaming-architecture
+```
+
+Run the full baseline set:
+
+```bash
+python3 tests/live_baseline.py
+```
+
+See `tests/README.md` for details.
 
 ## Customize Colors
 

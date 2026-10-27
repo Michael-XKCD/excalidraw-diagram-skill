@@ -1,0 +1,16 @@
+{
+  "slug": "prompt-safety-mental-model",
+  "order": 4,
+  "title": "Prompt Safety Mental Model",
+  "audience": "Mixed technical and less-technical stakeholders",
+  "inspiration": [
+    "~/work-repos/ct-infosec-smith/src/__tests__/prompt-injection.test.ts"
+  ],
+  "review_focus": [
+    "Teach the concept visually rather than drowning the viewer in attack strings",
+    "Show trust boundaries and blocked paths clearly",
+    "Keep security content understandable to non-specialists",
+    "Use contrast and composition to make safe vs unsafe flows obvious"
+  ],
+  "generation_prompt": "Use the local Excalidraw skill in `{repo_root}/SKILL.md` and the references directory as your methodology. Create a comprehensive but stakeholder-friendly Excalidraw diagram that explains the mental model of prompt safety in an AI system. Show untrusted input, sanitization boundaries, trusted execution areas, and blocked attack paths. Keep the explanation generic and accessible to less technical stakeholders. Include one compact evidence artifact, such as a small before-and-after example of unsafe input becoming safe metadata. Avoid making the whole diagram feel like a wall of security jargon. Save the final diagram exactly to `{diagram_path}`. Run the render-and-validate loop with the local renderer until the result feels presentation-ready. In your final response, briefly explain the diagram and confirm the saved path."
+}

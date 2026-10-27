@@ -1,0 +1,20 @@
+{
+  "slug": "ai-streaming-architecture",
+  "order": 1,
+  "title": "AI Streaming Architecture",
+  "audience": "Mixed technical and less-technical stakeholders",
+  "inspiration": [
+    "README.md example about streaming AI events to a frontend UI",
+    "~/work-repos/ct-infosec-tech-request/tests/test_integration.py",
+    "~/work-repos/ct-infosec-smith/src/orchestrator/skills/file-generation/SKILL.md"
+  ],
+  "review_focus": [
+    "Keep the diagram generic rather than protocol-branded",
+    "Balance event flow clarity with stakeholder legibility",
+    "Show a real-feeling streamed artifact without overwhelming the audience",
+    "Use a strong visual story instead of a grid of equal boxes",
+    "Prefer fewer, cleaner connectors over dense cross-diagram arrow choreography",
+    "Treat any detached arrow landing or text pressing against a boundary as a failure"
+  ],
+  "generation_prompt": "Use the local Excalidraw skill in `{repo_root}/SKILL.md` and the references directory as your methodology. Create a comprehensive Excalidraw diagram that explains how a generic AI orchestration system streams work, intermediate state, and review checkpoints across an execution runtime, tool layer, and receiving surface. Keep the diagram generic and understandable to less technical stakeholders, while still grounded enough to teach something concrete. Use the skill's multi-zoom approach: a high-level summary flow, clear section boundaries, and focused detail inside the sections. Include at least one evidence artifact, preferably a realistic but compact streamed event or partial-state payload. Avoid protocol-specific branding and avoid a bland boxes-and-arrows grid. Prefer fewer, cleaner connectors over lots of cross-diagram callouts. If a connector cannot land cleanly on a specific target, simplify the layout instead of adding that connector. Save the final diagram exactly to `{diagram_path}`. Run the render-and-validate loop with the local renderer until the result feels presentation-ready. In your final response, briefly explain the diagram and confirm the saved path."
+}

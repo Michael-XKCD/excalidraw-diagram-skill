@@ -1,0 +1,18 @@
+{
+  "slug": "vendor-evaluation-decision-flow",
+  "order": 2,
+  "title": "Vendor Evaluation Decision Flow",
+  "audience": "Mixed technical and business stakeholders",
+  "inspiration": [
+    "~/work-repos/ct-infosec-tech-request/figma-evaluation.md",
+    "~/work-repos/ct-infosec-tech-request/miro-evaluation.md",
+    "~/work-repos/ct-infosec-tech-request/tests/test_integration.py"
+  ],
+  "review_focus": [
+    "Make decision points easy to scan for non-technical viewers",
+    "Avoid overloading the diagram with policy jargon",
+    "Show the halt or approve paths with strong visual contrast",
+    "Use evidence artifacts sparingly and only where they help learning"
+  ],
+  "generation_prompt": "Use the local Excalidraw skill in `{repo_root}/SKILL.md` and the references directory as your methodology. Create a comprehensive Excalidraw diagram showing how a software vendor evaluation moves from intake through risk checks to an approve, mitigate, or halt decision. The diagram should feel suitable for mixed technical and business stakeholders. Emphasize the decision flow, escalation points, and final recommendation paths. Include one compact evidence artifact that makes the process concrete, such as a sample risk summary or review checklist excerpt. Avoid turning the diagram into a dense compliance document. Save the final diagram exactly to `{diagram_path}`. Run the render-and-validate loop with the local renderer until the result feels presentation-ready. In your final response, briefly explain the diagram and confirm the saved path."
+}

@@ -1,0 +1,17 @@
+{
+  "slug": "human-in-the-loop-workflow",
+  "order": 3,
+  "title": "Human-In-The-Loop Workflow",
+  "audience": "Mixed technical and product stakeholders",
+  "inspiration": [
+    "~/work-repos/ct-infosec-smith/src/orchestrator/skills/file-generation/SKILL.md",
+    "~/work-repos/ct-infosec-tech-request/tests/test_integration.py"
+  ],
+  "review_focus": [
+    "Make the review and revision loop feel central rather than decorative",
+    "Show where humans add value without overcomplicating the system",
+    "Preserve clear sequencing across drafting, tool use, review, and revision",
+    "Keep it useful to less technical stakeholders"
+  ],
+  "generation_prompt": "Use the local Excalidraw skill in `{repo_root}/SKILL.md` and the references directory as your methodology. Create a comprehensive Excalidraw diagram showing a human-in-the-loop workflow for AI-assisted content generation. Show how a request moves through orchestration, tool use, draft generation, review checkpoints, and revision before a final deliverable is accepted. This should feel grounded in software and AI systems, but be understandable to less technical stakeholders. Include one small evidence artifact such as a compact draft excerpt or review checklist snippet. Avoid a generic swimlane made of uniform cards. Save the final diagram exactly to `{diagram_path}`. Run the render-and-validate loop with the local renderer until the result feels presentation-ready. In your final response, briefly explain the diagram and confirm the saved path."
+}

@@ -1,0 +1,17 @@
+{
+  "slug": "observability-audit-architecture",
+  "order": 5,
+  "title": "Observability And Audit Architecture",
+  "audience": "Mixed technical and operational stakeholders",
+  "inspiration": [
+    "~/work-repos/ct-infosec-tech-request/tests/test_integration.py",
+    "~/work-repos/ct-infosec-audit-gcp/reports/report-02-17-2026.md"
+  ],
+  "review_focus": [
+    "Handle high information density without becoming cluttered",
+    "Show how signals become findings and summaries",
+    "Keep the final value legible to stakeholders who care about outcomes more than telemetry details",
+    "Make section boundaries and data movement easy to follow"
+  ],
+  "generation_prompt": "Use the local Excalidraw skill in `{repo_root}/SKILL.md` and the references directory as your methodology. Create a comprehensive Excalidraw diagram showing how an observability and audit architecture turns raw system signals into findings, summaries, and human review. This should stay in software and systems territory, but be legible to operational stakeholders who are not deeply technical. Use multiple sections and a clear story from source systems to signal collection to reviewable outputs. Include one compact evidence artifact such as a log snippet, metric sample, or short finding summary. Avoid making the diagram feel like a monitoring dashboard screenshot. Save the final diagram exactly to `{diagram_path}`. Run the render-and-validate loop with the local renderer until the result feels presentation-ready. In your final response, briefly explain the diagram and confirm the saved path."
+}

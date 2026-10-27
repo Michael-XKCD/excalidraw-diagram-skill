@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh; img-src data: blob:; font-src data: https://esm.sh; worker-src blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data: blob:; font-src 'self' data:; worker-src blob:;" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #ffffff; overflow: hidden; }
@@ -14,7 +14,15 @@
   <div id="root"></div>
 
   <script type="module">
-    import { exportToSvg } from "https://esm.sh/@excalidraw/excalidraw@0.18.0?bundle&target=es2022";
+    let exportToSvg;
+
+    try {
+      ({ exportToSvg } = await import("./vendor/excalidraw/excalidraw-export.mjs"));
+    } catch (err) {
+      window.__moduleReady = false;
+      window.__moduleError = err?.message || String(err);
+      throw err;
+    }
 
     window.renderDiagram = async function(jsonData) {
       try {
@@ -102,6 +110,7 @@
 
     // Signal that the module is loaded and ready
     window.__moduleReady = true;
+    window.__moduleError = null;
   </script>
 </body>
 </html>

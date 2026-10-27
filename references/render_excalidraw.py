@@ -13,8 +13,13 @@ First-time setup:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import http.server
 import json
+import socketserver
 import sys
+import threading
+import time
 from pathlib import Path
 
 
@@ -26,6 +31,44 @@ MAX_ELEMENT_DIMENSION = 100_000
 MAX_RENDERED_DIMENSION = 20_000
 MODULE_READY_TIMEOUT_MS = 30_000
 RENDER_TIMEOUT_MS = 15_000
+
+
+def wait_for_flag(
+    page,
+    expression: str,
+    timeout_ms: int,
+    description: str,
+    error_expression: str | None = None,
+) -> None:
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        if error_expression:
+            error_value = page.evaluate(error_expression)
+            if error_value:
+                print(f"ERROR: {description} failed: {error_value}", file=sys.stderr)
+                sys.exit(1)
+        if page.evaluate(expression):
+            return
+        time.sleep(0.05)
+    print(f"ERROR: Timed out waiting for {description}.", file=sys.stderr)
+    sys.exit(1)
+
+
+@contextlib.contextmanager
+def local_http_server(root: Path):
+    handler = lambda *args, **kwargs: http.server.SimpleHTTPRequestHandler(  # noqa: E731
+        *args,
+        directory=str(root),
+        **kwargs,
+    )
+    with socketserver.TCPServer(("127.0.0.1", 0), handler) as httpd:
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{httpd.server_address[1]}"
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=2)
 
 
 def _is_number(value: object) -> bool:
@@ -58,7 +101,23 @@ def validate_excalidraw(data: dict) -> list[str]:
     if app_state is not None and not isinstance(app_state, dict):
         errors.append("'appState' must be an object when present")
 
-    for index, element in enumerate(data.get("elements", [])):
+    elements = data.get("elements", [])
+    element_ids: set[str] = set()
+    duplicate_ids: set[str] = set()
+    for index, element in enumerate(elements):
+        if not isinstance(element, dict):
+            continue
+        element_id = element.get("id")
+        if not isinstance(element_id, str) or not element_id:
+            continue
+        if element_id in element_ids:
+            duplicate_ids.add(element_id)
+        element_ids.add(element_id)
+
+    for duplicate_id in sorted(duplicate_ids):
+        errors.append(f"Duplicate element id '{duplicate_id}'")
+
+    for index, element in enumerate(elements):
         if not isinstance(element, dict):
             errors.append(f"Element {index} must be an object")
             continue
@@ -108,6 +167,53 @@ def validate_excalidraw(data: dict) -> list[str]:
                     errors.append(
                         f"Element {element_id} point {point_index} is outside safe bounds"
                     )
+
+        container_id = element.get("containerId")
+        if container_id is not None:
+            if not isinstance(container_id, str) or not container_id:
+                errors.append(f"Element {element_id} has invalid 'containerId'")
+            elif container_id not in element_ids:
+                errors.append(
+                    f"Element {element_id} references missing containerId '{container_id}'"
+                )
+
+        bound_elements = element.get("boundElements")
+        if bound_elements is not None:
+            if not isinstance(bound_elements, list):
+                errors.append(f"Element {element_id} has non-list 'boundElements'")
+            else:
+                for bound_index, bound_element in enumerate(bound_elements):
+                    if not isinstance(bound_element, dict):
+                        errors.append(
+                            f"Element {element_id} boundElements[{bound_index}] must be an object"
+                        )
+                        continue
+                    bound_id = bound_element.get("id")
+                    if not isinstance(bound_id, str) or not bound_id:
+                        errors.append(
+                            f"Element {element_id} boundElements[{bound_index}] is missing a valid id"
+                        )
+                    elif bound_id not in element_ids:
+                        errors.append(
+                            f"Element {element_id} references missing bound element '{bound_id}'"
+                        )
+
+        for binding_field in ("startBinding", "endBinding"):
+            binding = element.get(binding_field)
+            if binding is None:
+                continue
+            if not isinstance(binding, dict):
+                errors.append(f"Element {element_id} has invalid '{binding_field}'")
+                continue
+            target_id = binding.get("elementId")
+            if not isinstance(target_id, str) or not target_id:
+                errors.append(
+                    f"Element {element_id} has invalid {binding_field}.elementId"
+                )
+            elif target_id not in element_ids:
+                errors.append(
+                    f"Element {element_id} {binding_field} references missing element '{target_id}'"
+                )
 
     return errors
 
@@ -215,9 +321,7 @@ def render(
         print(f"ERROR: Template not found at {template_path}", file=sys.stderr)
         sys.exit(1)
 
-    template_url = template_path.as_uri()
-
-    with sync_playwright() as p:
+    with local_http_server(template_path.parent) as server_url, sync_playwright() as p:
         try:
             browser = p.chromium.launch(headless=True)
         except Exception as e:
@@ -237,11 +341,15 @@ def render(
         page.set_default_timeout(RENDER_TIMEOUT_MS)
 
         # Load the template
-        page.goto(template_url)
+        page.goto(f"{server_url}/{template_path.name}")
 
         # Wait for the ES module to load.
-        page.wait_for_function(
-            "window.__moduleReady === true", timeout=MODULE_READY_TIMEOUT_MS
+        wait_for_flag(
+            page,
+            "window.__moduleReady === true",
+            MODULE_READY_TIMEOUT_MS,
+            "renderer module readiness",
+            "window.__moduleError || null",
         )
 
         # Inject the diagram data and render
@@ -258,8 +366,11 @@ def render(
             sys.exit(1)
 
         # Wait for render completion signal
-        page.wait_for_function(
-            "window.__renderComplete === true", timeout=RENDER_TIMEOUT_MS
+        wait_for_flag(
+            page,
+            "window.__renderComplete === true",
+            RENDER_TIMEOUT_MS,
+            "render completion",
         )
 
         # Screenshot the SVG element
